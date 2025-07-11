@@ -202,164 +202,68 @@ function GameContent() {
   if (!mode && !room) return null;
   if (loading) return <div>Loading...</div>;
   if (mode === "solo" && userId === undefined) return null; // Tunggu session
-  if (mode === "solo") return <FlappyGame userId={userId ?? ''} />;
+  if (mode === "solo")
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-yellow-100 to-blue-200 p-6">
+        <FlappyGame userId={userId ?? ''} />
+        <div className="mt-10 text-gray-400 text-sm">&copy; 2024 Kuyang Cina!!</div>
+      </div>
+    );
   if (notFound) return <div>Room tidak ditemukan. Mengalihkan ke lobby...</div>;
   
   if (gameStarted && roomData) {
     return (
-      <FlappyGame 
-        userId={userId ?? ''} 
-        roomId={room}
-        players={players}
-        currentPlayer={currentPlayer}
-        isMultiplayer={true}
-      />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-yellow-100 to-blue-200 p-6">
+        <FlappyGame 
+          userId={userId ?? ''} 
+          roomId={room}
+          players={players}
+          currentPlayer={currentPlayer}
+          isMultiplayer={true}
+        />
+        <div className="mt-10 text-gray-400 text-sm">&copy; 2024 Kuyang Cina!!</div>
+      </div>
     );
   }
 
   if (roomData)
     return (
-      <div style={{ 
-        maxWidth: 800, 
-        margin: "0 auto", 
-        padding: 24,
-        minHeight: "100vh",
-        background: "#f8f9fa"
-      }}>
-        <div style={{ 
-          background: "white", 
-          borderRadius: 12, 
-          padding: 24, 
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-          marginBottom: 24
-        }}>
-          <h1 style={{ marginBottom: 8, color: "#2563eb" }}>Room: {roomData.name}</h1>
-          <p style={{ color: "#666", marginBottom: 16 }}>
-            Room ID: {roomData.id}
-          </p>
-          
-          {currentPlayer && (
-            <div style={{ 
-              background: "#e3f2fd", 
-              padding: 12, 
-              borderRadius: 8, 
-              marginBottom: 16,
-              border: "1px solid #2196f3"
-            }}>
-              <strong>Anda: {currentPlayer.username}</strong>
-              {currentPlayer.is_owner && " (Owner)"}
-            </div>
-          )}
-        </div>
-
-        <div style={{ 
-          background: "white", 
-          borderRadius: 12, 
-          padding: 24, 
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-          marginBottom: 24
-        }}>
-          <h2 style={{ marginBottom: 16, color: "#333" }}>Pemain dalam Room</h2>
-          {/* DEBUG: tampilkan userId dan data players mentah */}
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
-            <b>userId:</b> {String(userId)}<br/>
-            <b>players:</b> <pre style={{ background: '#f1f1f1', padding: 8, borderRadius: 4 }}>{JSON.stringify(players, null, 2)}</pre>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-yellow-100 to-blue-200 p-6">
+        <div className="bg-white/80 rounded-3xl shadow-xl px-8 py-10 flex flex-col items-center max-w-2xl w-full">
+          <h1 className="text-3xl font-extrabold text-yellow-500 mb-2 drop-shadow-lg text-center" style={{letterSpacing: 2}}>
+            Kuyang Cina!!
+          </h1>
+          <div className="mb-4 w-full">
+            <h2 className="text-xl font-bold text-red-500 mb-2">Room: {roomData.name}</h2>
+            <p className="text-gray-500 mb-4">Room ID: {roomData.id}</p>
+            {currentPlayer && (
+              <div className="bg-blue-50 p-4 rounded-xl mb-4 border border-blue-300">
+                <strong>Anda: {currentPlayer.username}</strong>
+                {currentPlayer.is_owner && " (Owner)"}
+              </div>
+            )}
           </div>
-          {players.length === 0 ? (
-            <p style={{ color: "#666", fontStyle: "italic" }}>Belum ada pemain lain...</p>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {players.map((player, index) => {
-                const isCurrentUser = player.user_id === userId;
-                return (
-                  <div key={player.id} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: 12,
-                    background: player.is_owner ? "#fff3cd" : "#f8f9fa",
-                    borderRadius: 8,
-                    border: player.is_owner ? "2px solid #ffc107" : "1px solid #dee2e6"
-                  }}>
-                    <div style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: player.is_owner ? "#ffc107" : "#6c757d",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      fontWeight: "bold",
-                      marginRight: 12
-                    }}>
-                      {index + 1}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "bold" }}>
-                        {player.username}
-                        {isCurrentUser && " (Anda)"}
-                        {player.is_owner && " (Owner)"}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#666" }}>
-                        Bergabung: {new Date(player.joined_at).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {/* Jika hanya ada satu pemain (diri sendiri), tampilkan pesan */}
-          {players.length === 1 && players[0].user_id === userId && (
-            <p style={{ color: "#666", fontStyle: "italic", marginTop: 12 }}>
-              Belum ada pemain lain...
-            </p>
-          )}
-        </div>
-
-        {roomData.owner === userId && players.length >= 1 && (
-          <div style={{ 
-            background: "white", 
-            borderRadius: 12, 
-            padding: 24, 
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-            marginBottom: 24
-          }}>
-            <h3 style={{ marginBottom: 16, color: "#333" }}>Kontrol Owner</h3>
-            <button
-              onClick={startGame}
-              style={{
-                padding: "16px 32px",
-                fontSize: 18,
-                borderRadius: 8,
-                background: "#28a745",
-                color: "#fff",
-                fontWeight: "bold",
-                border: "none",
-                cursor: "pointer",
-                width: "100%"
-              }}
-            >
-              Mulai Game ({players.length} pemain)
+          <div className="w-full mb-4">
+            <h3 className="text-lg font-bold mb-2 text-yellow-700">Pemain di Room:</h3>
+            <ul className="mb-4">
+              {players.map((p) => (
+                <li key={p.id} className="mb-1 text-base text-gray-700">
+                  {p.username} {p.is_owner && <span className="text-yellow-500 font-bold">(Owner)</span>}
+                  {p.user_id === userId && <span className="ml-2 text-green-500 font-bold">(Kamu)</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {roomData.owner === userId && (
+            <button onClick={startGame} className="bg-gradient-to-r from-yellow-400 to-red-400 text-white font-bold px-8 py-3 rounded-xl shadow-lg hover:scale-105 hover:from-yellow-500 hover:to-red-500 transition-all text-lg mb-4">
+              Mulai Game
             </button>
-          </div>
-        )}
-
-        <button
-          onClick={() => router.push("/lobby")}
-          style={{
-            padding: "12px 24px",
-            fontSize: 16,
-            borderRadius: 8,
-            background: "#6c757d",
-            color: "#fff",
-            fontWeight: "bold",
-            border: "none",
-            cursor: "pointer"
-          }}
-        >
-          Kembali ke Lobby
-        </button>
+          )}
+          <button onClick={() => router.push('/lobby')} className="mt-2 bg-gray-200 text-gray-700 font-bold px-6 py-2 rounded-lg shadow hover:bg-gray-300 transition-all text-base">
+            Kembali ke Lobby
+          </button>
+        </div>
+        <div className="mt-10 text-gray-400 text-sm">&copy; 2024 Kuyang Cina!!</div>
       </div>
     );
   return null;

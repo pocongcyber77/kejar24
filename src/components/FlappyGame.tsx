@@ -122,6 +122,11 @@ export default function FlappyGame({
 
   // Start or restart game
   const startGame = () => {
+    // Stop end.ogg jika sedang main ulang
+    if (endRef.current) {
+      endRef.current.pause();
+      endRef.current.currentTime = 0;
+    }
     setGameState(GameState.Playing);
     setScore(0);
     setShowScore(0);
@@ -132,10 +137,55 @@ export default function FlappyGame({
     nextPipeId.current = 0;
   };
 
-  // Flap handler
+  // Audio refs
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const flapRef = useRef<HTMLAudioElement | null>(null); // ganti dari passRef
+  const passRef = useRef<HTMLAudioElement | null>(null);
+  const endRef = useRef<HTMLAudioElement | null>(null);
+
+  // Play BGM on game start, stop on game over
+  useEffect(() => {
+    if (!bgmRef.current) return;
+    if (gameState === GameState.Playing) {
+      bgmRef.current.currentTime = 0;
+      bgmRef.current.loop = true;
+      bgmRef.current.volume = 0.5;
+      bgmRef.current.play().catch(() => {});
+    } else {
+      bgmRef.current.pause();
+      bgmRef.current.currentTime = 0;
+    }
+  }, [gameState]);
+
+  // Play end SFX on game over
+  useEffect(() => {
+    if (gameState === GameState.GameOver && endRef.current) {
+      endRef.current.currentTime = 0;
+      endRef.current.play().catch(() => {});
+    }
+  }, [gameState]);
+
+  // Play flap SFX on flap
+  const playFlap = () => {
+    if (flapRef.current) {
+      flapRef.current.currentTime = 0;
+      flapRef.current.play().catch(() => {});
+    }
+  };
+
+  // Play pass SFX when passing a pipe
+  const playPass = () => {
+    if (passRef.current) {
+      passRef.current.currentTime = 0;
+      passRef.current.play().catch(() => {});
+    }
+  };
+
+  // Modify flap handler to play flap SFX
   const flap = () => {
     if (gameState === GameState.Playing) {
       velocity.current = FLAP_POWER;
+      playFlap();
     }
   };
 
@@ -177,6 +227,26 @@ export default function FlappyGame({
     // eslint-disable-next-line
   }, [gameState]);
 
+  // Tambah ref untuk gambar burung
+  const birdImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Load gambar burung saat mount
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = '/characters/bird.png';
+    birdImgRef.current = img;
+  }, []);
+
+  // Tambah ref untuk gambar background
+  const bgImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Load gambar background saat mount
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = '/backgrounds/bg.png';
+    bgImgRef.current = img;
+  }, []);
+
   // Main game loop
   useEffect(() => {
     let animationId: number;
@@ -186,9 +256,31 @@ export default function FlappyGame({
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
 
-      // Clear
-      ctx.fillStyle = COLORS.bg;
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      if (bgImgRef.current && bgImgRef.current.complete) {
+        // Draw background with 'contain' fit (no crop, no distorsi)
+        const img = bgImgRef.current;
+        const imgRatio = img.width / img.height;
+        const canvasRatio = WIDTH / HEIGHT;
+        let drawWidth = WIDTH;
+        let drawHeight = HEIGHT;
+        let offsetX = 0;
+        let offsetY = 0;
+        if (imgRatio > canvasRatio) {
+          // Gambar lebih lebar dari canvas, fit lebar
+          drawWidth = WIDTH;
+          drawHeight = WIDTH / imgRatio;
+          offsetY = (HEIGHT - drawHeight) / 2;
+        } else {
+          // Gambar lebih tinggi dari canvas, fit tinggi
+          drawHeight = HEIGHT;
+          drawWidth = HEIGHT * imgRatio;
+          offsetX = (WIDTH - drawWidth) / 2;
+        }
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+      } else {
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      }
 
       // Draw ground
       ctx.fillStyle = COLORS.ground;
@@ -212,15 +304,26 @@ export default function FlappyGame({
       ctx.restore();
 
       // Draw bird
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(WIDTH / 4, birdY.current, BIRD_SIZE / 2, 0, Math.PI * 2);
-      ctx.fillStyle = COLORS.bird;
-      ctx.fill();
-      ctx.strokeStyle = "#e6b800";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
+      if (birdImgRef.current && birdImgRef.current.complete) {
+        ctx.drawImage(
+          birdImgRef.current,
+          WIDTH / 4 - BIRD_SIZE / 2,
+          birdY.current - BIRD_SIZE / 2,
+          BIRD_SIZE,
+          BIRD_SIZE
+        );
+      } else {
+        // fallback jika gambar belum siap
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(WIDTH / 4, birdY.current, BIRD_SIZE / 2, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS.bird;
+        ctx.fill();
+        ctx.strokeStyle = "#e6b800";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Draw score
       ctx.fillStyle = COLORS.text;
@@ -234,15 +337,41 @@ export default function FlappyGame({
         ctx.font = "bold 28px sans-serif";
         ctx.fillText("Flappy Bird", WIDTH / 2, HEIGHT / 2 - 40);
         ctx.font = "20px sans-serif";
+        // Outline hitam untuk petunjuk kontrol
+        ctx.save();
+        ctx.font = "bold 20px sans-serif";
+        ctx.textAlign = "center";
+        ctx.lineWidth = 8; // lebih tebal
+        ctx.strokeStyle = "#000";
+        ctx.strokeText("Tekan [Space] atau [↑] untuk mulai", WIDTH / 2, HEIGHT / 2);
+        ctx.fillStyle = "#fff";
         ctx.fillText("Tekan [Space] atau [↑] untuk mulai", WIDTH / 2, HEIGHT / 2);
+        ctx.restore();
       } else if (gameState === GameState.GameOver) {
-        ctx.fillStyle = COLORS.text;
-        ctx.font = "bold 32px sans-serif";
-        ctx.fillText("Game Over", WIDTH / 2, HEIGHT / 2 - 40);
-        ctx.font = "20px sans-serif";
-        ctx.fillText(`Skor: ${showScore}`, WIDTH / 2, HEIGHT / 2);
-        ctx.font = "18px sans-serif";
+        // Game Over text: kuning extra bold dengan outline hitam
+        ctx.save();
+        ctx.font = "900 44px sans-serif"; // extra bold, lebih besar
+        ctx.textAlign = "center";
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = "#000";
+        ctx.strokeText("Cina Skibidi!", WIDTH / 2, HEIGHT / 2 - 50);
+        ctx.fillStyle = "#ffe600"; // kuning cerah
+        ctx.fillText("Cina SKibidi!", WIDTH / 2, HEIGHT / 2 - 50);
+        ctx.restore();
+        // Skor dan petunjuk kontrol: putih bold + outline hitam
+        ctx.save();
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 24px sans-serif";
+        ctx.textAlign = "center";
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = "#000";
+        ctx.strokeText(`Nomor Togel: ${showScore}`, WIDTH / 2, HEIGHT / 2);
+        ctx.fillText(`Nomor Togel: ${showScore}`, WIDTH / 2, HEIGHT / 2);
+        ctx.font = "bold 18px sans-serif";
+        ctx.lineWidth = 4;
+        ctx.strokeText("Tekan [Space] atau [↑] untuk main lagi", WIDTH / 2, HEIGHT / 2 + 40);
         ctx.fillText("Tekan [Space] atau [↑] untuk main lagi", WIDTH / 2, HEIGHT / 2 + 40);
+        ctx.restore();
       }
     };
 
@@ -314,8 +443,8 @@ export default function FlappyGame({
           pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
         ) {
           setScore((s) => s + 1);
-          // Mark as scored
           (pipe as any).scored = true;
+          playPass();
         }
       });
 
@@ -400,7 +529,7 @@ export default function FlappyGame({
       }}
     >
       <div style={{ marginBottom: 16, fontWeight: "bold", color: "#2563eb", fontSize: 22 }}>
-        Skor Tertinggi: {highScore ?? "-"}
+        Nomor Togel Barokah: {highScore ?? "-"}
       </div>
       {isMultiplayer && (
         <div style={{ 
@@ -421,8 +550,7 @@ export default function FlappyGame({
           width: WIDTH,
           height: HEIGHT,
           borderRadius: 24,
-          border: "3px solid #2563eb",
-          background: "#70c5ce",
+          background: "#fff", // putih flat
           boxShadow: "0 4px 32px #0002",
           display: "block",
           margin: "0 auto",
@@ -474,6 +602,10 @@ export default function FlappyGame({
       >
         Kembali ke Lobby
       </button>
+      <audio ref={bgmRef} src="/audio/bgmusic.ogg" preload="auto" />
+      <audio ref={flapRef} src="/audio/flap.ogg" preload="auto" />
+      <audio ref={passRef} src="/audio/pass.ogg" preload="auto" />
+      <audio ref={endRef} src="/audio/end.ogg" preload="auto" />
     </div>
   );
 } 
