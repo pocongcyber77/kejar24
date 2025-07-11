@@ -1,10 +1,10 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import FlappyGame from "@/components/FlappyGame";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function GamePage() {
+function GameContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
@@ -61,4 +61,12 @@ export default function GamePage() {
       </div>
     );
   return null;
+}
+
+export default function GamePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <GameContent />
+    </Suspense>
+  );
 } 
