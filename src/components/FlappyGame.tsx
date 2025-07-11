@@ -4,14 +4,14 @@ import { supabase } from "../lib/supabaseClient";
 
 const WIDTH = 400;
 const HEIGHT = 600;
-const GROUND_HEIGHT = 100;
-const BIRD_SIZE = 32;
+const GROUND_HEIGHT = 90;
+const BIRD_SIZE = 45;
 const PIPE_WIDTH = 60;
-const PIPE_GAP = 140;
-const GRAVITY = 0.5;
-const FLAP_POWER = -8;
-const PIPE_INTERVAL = 1500; // ms
-const PIPE_SPEED = 2.5;
+const PIPE_GAP = 145;
+const GRAVITY = 0.6;
+const FLAP_POWER = -9;
+const PIPE_INTERVAL = 1200; // ms
+const PIPE_SPEED = 3.0; 
 
 type Pipe = {
   x: number;
@@ -69,6 +69,8 @@ export default function FlappyGame({
   const pipes = useRef<Pipe[]>([]);
   const frame = useRef(0);
   const nextPipeId = useRef(0);
+  const pipeSpeed = useRef(2.5);
+  const startTime = useRef(Date.now());
 
   // For collision/game over
   const [showScore, setShowScore] = useState(0);
@@ -135,6 +137,8 @@ export default function FlappyGame({
     pipes.current = [];
     frame.current = 0;
     nextPipeId.current = 0;
+    pipeSpeed.current = 2.5;
+    startTime.current = Date.now();
   };
 
   // Audio refs
@@ -387,8 +391,11 @@ export default function FlappyGame({
       birdY.current += velocity.current;
 
       // Pipes logic
+      const elapsedSec = (Date.now() - startTime.current) / 1000;
+      pipeSpeed.current = 3.0 + 0.02 * elapsedSec;
+
       pipes.current.forEach((pipe) => {
-        pipe.x -= PIPE_SPEED;
+        pipe.x -= pipeSpeed.current;
       });
       // Remove pipes out of screen
       pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > 0);
@@ -439,8 +446,8 @@ export default function FlappyGame({
         const birdX = WIDTH / 4;
         if (
           !("scored" in pipe) &&
-          pipe.x + PIPE_WIDTH / 2 < birdX - PIPE_SPEED &&
-          pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
+          pipe.x + PIPE_WIDTH / 2 < birdX - pipeSpeed.current &&
+          pipe.x + PIPE_WIDTH / 2 >= birdX - pipeSpeed.current - pipeSpeed.current
         ) {
           setScore((s) => s + 1);
           (pipe as any).scored = true;
