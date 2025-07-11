@@ -116,7 +116,7 @@ function GameContent() {
       setLoading(false);
       return;
     }
-    if (room) {
+    if (room && userId) { // Only run when userId is available
       (async () => {
         setLoading(true);
         const { data, error } = await supabase
@@ -139,7 +139,7 @@ function GameContent() {
 
   // Subscribe to room and players changes
   useEffect(() => {
-    if (!room) return;
+    if (!room || !userId) return; // Only run when userId is available
 
     console.log("Setting up subscriptions for room:", room);
 
