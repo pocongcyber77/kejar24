@@ -264,41 +264,51 @@ function GameContent() {
             <p style={{ color: "#666", fontStyle: "italic" }}>Belum ada pemain lain...</p>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
-              {players.map((player, index) => (
-                <div key={player.id} style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  padding: 12, 
-                  background: player.is_owner ? "#fff3cd" : "#f8f9fa",
-                  borderRadius: 8,
-                  border: player.is_owner ? "2px solid #ffc107" : "1px solid #dee2e6"
-                }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: player.is_owner ? "#ffc107" : "#6c757d",
+              {players.map((player, index) => {
+                const isCurrentUser = player.user_id === userId;
+                return (
+                  <div key={player.id} style={{
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontWeight: "bold",
-                    marginRight: 12
+                    padding: 12,
+                    background: player.is_owner ? "#fff3cd" : "#f8f9fa",
+                    borderRadius: 8,
+                    border: player.is_owner ? "2px solid #ffc107" : "1px solid #dee2e6"
                   }}>
-                    {index + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "bold" }}>
-                      {player.username}
-                      {player.is_owner && " (Owner)"}
+                    <div style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: player.is_owner ? "#ffc107" : "#6c757d",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      fontWeight: "bold",
+                      marginRight: 12
+                    }}>
+                      {index + 1}
                     </div>
-                    <div style={{ fontSize: 12, color: "#666" }}>
-                      Bergabung: {new Date(player.joined_at).toLocaleTimeString()}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "bold" }}>
+                        {player.username}
+                        {isCurrentUser && " (Anda)"}
+                        {player.is_owner && " (Owner)"}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#666" }}>
+                        Bergabung: {new Date(player.joined_at).toLocaleTimeString()}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+          )}
+          {/* Jika hanya ada satu pemain (diri sendiri), tampilkan pesan */}
+          {players.length === 1 && players[0].user_id === userId && (
+            <p style={{ color: "#666", fontStyle: "italic", marginTop: 12 }}>
+              Belum ada pemain lain...
+            </p>
           )}
         </div>
 
