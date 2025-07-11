@@ -90,7 +90,7 @@ function GameContent() {
 
   // Fetch players function
   const fetchPlayers = async (roomId: string) => {
-    console.log("Fetching players for room:", roomId);
+    console.log("Fetching players for room:", roomId, "as user:", userId);
     const { data, error } = await supabase
       .from("players")
       .select("*")
@@ -99,15 +99,15 @@ function GameContent() {
     
     if (error) {
       console.error("Error fetching players:", error);
+      setPlayers([]);
+      setCurrentPlayer(null);
       return;
     }
     
     console.log("Fetched players:", data);
-    if (data) {
-      setPlayers(data);
-      const currentPlayerData = data.find(p => p.user_id === userId);
-      if (currentPlayerData) setCurrentPlayer(currentPlayerData);
-    }
+    setPlayers(data || []);
+    const currentPlayerData = (data || []).find(p => p.user_id === userId);
+    setCurrentPlayer(currentPlayerData || null);
   };
 
   useEffect(() => {
@@ -260,6 +260,11 @@ function GameContent() {
           marginBottom: 24
         }}>
           <h2 style={{ marginBottom: 16, color: "#333" }}>Pemain dalam Room</h2>
+          {/* DEBUG: tampilkan userId dan data players mentah */}
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+            <b>userId:</b> {String(userId)}<br/>
+            <b>players:</b> <pre style={{ background: '#f1f1f1', padding: 8, borderRadius: 4 }}>{JSON.stringify(players, null, 2)}</pre>
+          </div>
           {players.length === 0 ? (
             <p style={{ color: "#666", fontStyle: "italic" }}>Belum ada pemain lain...</p>
           ) : (
