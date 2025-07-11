@@ -18,6 +18,22 @@ type Pipe = {
   gapY: number;
 };
 
+type Player = {
+  id: string;
+  user_id: string;
+  room_id: string;
+  username: string;
+  is_owner: boolean;
+  joined_at: string;
+};
+
+type Bird = {
+  y: number;
+  velocity: number;
+  color: string;
+  isAlive: boolean;
+};
+
 enum GameState {
   Ready = "ready",
   Playing = "playing",
@@ -28,12 +44,27 @@ const COLORS = {
   bg: "#70c5ce",
   ground: "#ded895",
   bird: "#ffdf00",
+  bird2: "#ff6b6b",
   pipe: "#228b22",
   pipeDark: "#196619",
   text: "#222",
 };
 
-export default function FlappyGame({ userId }: { userId: string }) {
+interface FlappyGameProps {
+  userId: string;
+  roomId?: string | null;
+  players?: Player[];
+  currentPlayer?: Player | null;
+  isMultiplayer?: boolean;
+}
+
+export default function FlappyGame({ 
+  userId, 
+  roomId, 
+  players = [], 
+  currentPlayer, 
+  isMultiplayer = false 
+}: FlappyGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>(GameState.Ready);
   const [score, setScore] = useState(0);
@@ -41,8 +72,7 @@ export default function FlappyGame({ userId }: { userId: string }) {
   const [scoreHistory, setScoreHistory] = useState<number[]>([]);
 
   // Game state refs (for animation loop)
-  const birdY = useRef(HEIGHT / 2);
-  const velocity = useRef(0);
+  const birds = useRef<Bird[]>([]);
   const pipes = useRef<Pipe[]>([]);
   const frame = useRef(0);
   const nextPipeId = useRef(0);
@@ -55,6 +85,22 @@ export default function FlappyGame({ userId }: { userId: string }) {
   useEffect(() => {
     setIsMobile(window.innerWidth < 700 || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent));
   }, []);
+
+  // Initialize birds based on multiplayer or solo
+  useEffect(() => {
+    if (isMultiplayer && players.length >= 2) {
+      // Two birds for multiplayer
+      birds.current = [
+        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird, isAlive: true },
+        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird2, isAlive: true }
+      ];
+    } else {
+      // Single bird for solo
+      birds.current = [
+        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird, isAlive: true }
+      ];
+    }
+  }, [isMultiplayer, players]);
 
   // Fetch high score & history
   useEffect(() => {
@@ -102,17 +148,20 @@ export default function FlappyGame({ userId }: { userId: string }) {
     setGameState(GameState.Playing);
     setScore(0);
     setShowScore(0);
-    birdY.current = HEIGHT / 2;
-    velocity.current = 0;
+    birds.current.forEach(bird => {
+      bird.y = HEIGHT / 2;
+      bird.velocity = 0;
+      bird.isAlive = true;
+    });
     pipes.current = [];
     frame.current = 0;
     nextPipeId.current = 0;
   };
 
   // Flap handler
-  const flap = () => {
-    if (gameState === GameState.Playing) {
-      velocity.current = FLAP_POWER;
+  const flap = (birdIndex: number = 0) => {
+    if (gameState === GameState.Playing && birds.current[birdIndex]?.isAlive) {
+      birds.current[birdIndex].velocity = FLAP_POWER;
     }
   };
 
@@ -121,8 +170,12 @@ export default function FlappyGame({ userId }: { userId: string }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (gameState === GameState.Ready && (e.code === "Space" || e.code === "ArrowUp")) {
         startGame();
-      } else if (gameState === GameState.Playing && (e.code === "Space" || e.code === "ArrowUp")) {
-        flap();
+      } else if (gameState === GameState.Playing) {
+        if (e.code === "Space" || e.code === "ArrowUp") {
+          flap(0); // First bird
+        } else if (e.code === "KeyW" || e.code === "ArrowLeft") {
+          flap(1); // Second bird (if multiplayer)
+        }
       } else if (gameState === GameState.GameOver && (e.code === "Space" || e.code === "ArrowUp")) {
         startGame();
       }
@@ -139,9 +192,19 @@ export default function FlappyGame({ userId }: { userId: string }) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       if (document.activeElement !== canvas) canvas.focus();
-      const event = { code: "Space" } as KeyboardEvent;
+      
       if (gameState === "ready") startGame();
-      else if (gameState === "playing") flap();
+      else if (gameState === "playing") {
+        // Touch left side for first bird, right side for second bird
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        if (x < canvas.width / 2) {
+          flap(0);
+        } else {
+          flap(1);
+        }
+      }
       else if (gameState === "gameover") startGame();
     };
     const canvas = canvasRef.current;
@@ -188,15 +251,28 @@ export default function FlappyGame({ userId }: { userId: string }) {
       });
       ctx.restore();
 
-      // Draw bird
+      // Draw birds
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(WIDTH / 4, birdY.current, BIRD_SIZE / 2, 0, Math.PI * 2);
-      ctx.fillStyle = COLORS.bird;
-      ctx.fill();
-      ctx.strokeStyle = "#e6b800";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      birds.current.forEach((bird, index) => {
+        if (!bird.isAlive) return;
+        
+        ctx.beginPath();
+        const x = WIDTH / 4 + (index * 50); // Offset second bird
+        ctx.arc(x, bird.y, BIRD_SIZE / 2, 0, Math.PI * 2);
+        ctx.fillStyle = bird.color;
+        ctx.fill();
+        ctx.strokeStyle = "#e6b800";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw player name above bird
+        if (isMultiplayer && players[index]) {
+          ctx.fillStyle = COLORS.text;
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(players[index].username, x, bird.y - BIRD_SIZE / 2 - 10);
+        }
+      });
       ctx.restore();
 
       // Draw score
@@ -204,6 +280,14 @@ export default function FlappyGame({ userId }: { userId: string }) {
       ctx.font = "bold 36px sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(`${score}`, WIDTH / 2, 80);
+
+      // Draw controls info for multiplayer
+      if (isMultiplayer && gameState === GameState.Ready) {
+        ctx.fillStyle = COLORS.text;
+        ctx.font = "16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Player 1: Space/↑ | Player 2: W/←", WIDTH / 2, HEIGHT - 60);
+      }
 
       // Draw start/game over UI
       if (gameState === GameState.Ready) {
@@ -230,9 +314,12 @@ export default function FlappyGame({ userId }: { userId: string }) {
         return;
       }
 
-      // Bird physics
-      velocity.current += GRAVITY;
-      birdY.current += velocity.current;
+      // Birds physics
+      birds.current.forEach(bird => {
+        if (!bird.isAlive) return;
+        bird.velocity += GRAVITY;
+        bird.y += bird.velocity;
+      });
 
       // Pipes logic
       pipes.current.forEach((pipe) => {
@@ -251,47 +338,67 @@ export default function FlappyGame({ userId }: { userId: string }) {
       }
 
       // Collision detection
-      // Ground
-      if (birdY.current + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
+      let allBirdsDead = true;
+      birds.current.forEach((bird, index) => {
+        if (!bird.isAlive) return;
+        
+        // Ground
+        if (bird.y + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
+          bird.isAlive = false;
+          return;
+        }
+        // Ceiling
+        if (bird.y - BIRD_SIZE / 2 <= 0) {
+          bird.y = BIRD_SIZE / 2;
+          bird.velocity = 0;
+        }
+        // Pipes
+        for (const pipe of pipes.current) {
+          const birdX = WIDTH / 4 + (index * 50);
+          // Check horizontal collision
+          if (
+            birdX + BIRD_SIZE / 2 > pipe.x &&
+            birdX - BIRD_SIZE / 2 < pipe.x + PIPE_WIDTH
+          ) {
+            // Check vertical collision
+            if (
+              bird.y - BIRD_SIZE / 2 < pipe.gapY ||
+              bird.y + BIRD_SIZE / 2 > pipe.gapY + PIPE_GAP
+            ) {
+              bird.isAlive = false;
+              return;
+            }
+          }
+        }
+        
+        if (bird.isAlive) allBirdsDead = false;
+      });
+
+      // Game over if all birds are dead
+      if (allBirdsDead) {
         setGameState(GameState.GameOver);
         setShowScore(score);
         return;
       }
-      // Ceiling
-      if (birdY.current - BIRD_SIZE / 2 <= 0) {
-        birdY.current = BIRD_SIZE / 2;
-        velocity.current = 0;
-      }
-      // Pipes
-      for (const pipe of pipes.current) {
-        const birdX = WIDTH / 4;
-        // Check horizontal collision
-        if (
-          birdX + BIRD_SIZE / 2 > pipe.x &&
-          birdX - BIRD_SIZE / 2 < pipe.x + PIPE_WIDTH
-        ) {
-          // Check vertical collision
-          if (
-            birdY.current - BIRD_SIZE / 2 < pipe.gapY ||
-            birdY.current + BIRD_SIZE / 2 > pipe.gapY + PIPE_GAP
-          ) {
-            setGameState(GameState.GameOver);
-            setShowScore(score);
-            return;
-          }
-        }
-      }
 
-      // Score: add when bird passes a pipe
+      // Score: add when any bird passes a pipe
       pipes.current.forEach((pipe) => {
-        const birdX = WIDTH / 4;
-        if (
-          !("scored" in pipe) &&
-          pipe.x + PIPE_WIDTH / 2 < birdX - PIPE_SPEED &&
-          pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
-        ) {
+        if ("scored" in pipe) return;
+        
+        let anyBirdPassed = false;
+        birds.current.forEach((bird, index) => {
+          if (!bird.isAlive) return;
+          const birdX = WIDTH / 4 + (index * 50);
+          if (
+            pipe.x + PIPE_WIDTH / 2 < birdX - PIPE_SPEED &&
+            pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
+          ) {
+            anyBirdPassed = true;
+          }
+        });
+        
+        if (anyBirdPassed) {
           setScore((s) => s + 1);
-          // Mark as scored
           (pipe as any).scored = true;
         }
       });
@@ -316,7 +423,7 @@ export default function FlappyGame({ userId }: { userId: string }) {
       cancelAnimationFrame(animationId);
     };
     // eslint-disable-next-line
-  }, [gameState, score]);
+  }, [gameState, score, isMultiplayer, players]);
 
   // Draw once on mount
   useEffect(() => {
@@ -379,6 +486,17 @@ export default function FlappyGame({ userId }: { userId: string }) {
       <div style={{ marginBottom: 16, fontWeight: "bold", color: "#2563eb", fontSize: 22 }}>
         Skor Tertinggi: {highScore ?? "-"}
       </div>
+      {isMultiplayer && (
+        <div style={{ 
+          marginBottom: 16, 
+          padding: "8px 16px", 
+          background: "#e3f2fd", 
+          borderRadius: 8,
+          border: "1px solid #2196f3"
+        }}>
+          <strong>Multiplayer Mode</strong> - {players.length} pemain
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         width={WIDTH}
