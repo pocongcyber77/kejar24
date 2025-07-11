@@ -8,10 +8,10 @@ const GROUND_HEIGHT = 100;
 const BIRD_SIZE = 32;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 140;
-const GRAVITY = 0.5;
-const FLAP_POWER = -8;
+const GRAVITY = 0.4; // Reduced gravity for smoother movement
+const FLAP_POWER = -7; // Reduced flap power
 const PIPE_INTERVAL = 1500; // ms
-const PIPE_SPEED = 2.5;
+const PIPE_SPEED = 2; // Reduced pipe speed
 
 type Pipe = {
   x: number;
@@ -75,9 +75,9 @@ export default function FlappyGame({
   // Game state refs (for animation loop)
   const birds = useRef<Bird[]>([]);
   const pipes = useRef<Pipe[]>([]);
-  const frame = useRef(0);
   const lastPipeTime = useRef(Date.now());
   const animationId = useRef<number | null>(null);
+  const lastTime = useRef(0);
 
   // For collision/game over
   const [showScore, setShowScore] = useState(0);
@@ -156,8 +156,8 @@ export default function FlappyGame({
       bird.isAlive = true;
     });
     pipes.current = [];
-    frame.current = 0;
     lastPipeTime.current = Date.now();
+    lastTime.current = 0;
   }, []);
 
   // Flap handler
@@ -167,12 +167,13 @@ export default function FlappyGame({
     }
   }, [gameState]);
 
-  // Improved collision detection
+  // Simple collision detection
   const checkCollision = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
-    const birdLeft = birdX - BIRD_SIZE / 2;
-    const birdRight = birdX + BIRD_SIZE / 2;
-    const birdTop = bird.y - BIRD_SIZE / 2;
-    const birdBottom = bird.y + BIRD_SIZE / 2;
+    const birdRadius = BIRD_SIZE / 2;
+    const birdLeft = birdX - birdRadius;
+    const birdRight = birdX + birdRadius;
+    const birdTop = bird.y - birdRadius;
+    const birdBottom = bird.y + birdRadius;
     
     const pipeLeft = pipe.x;
     const pipeRight = pipe.x + PIPE_WIDTH;
@@ -194,16 +195,15 @@ export default function FlappyGame({
     return false;
   }, []);
 
-  // Improved score detection
+  // Simple score detection
   const checkScore = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
     if (pipe.scored) return false;
     
-    // Check if bird has passed the pipe
     const birdCenterX = birdX;
     const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
     
-    // Bird has passed the pipe if it's slightly past the pipe center
-    return birdCenterX > pipeCenterX + 5;
+    // Bird has passed the pipe if it's past the pipe center
+    return birdCenterX > pipeCenterX;
   }, []);
 
   // Keyboard controls
@@ -345,24 +345,30 @@ export default function FlappyGame({
       }
     };
 
-    // Game logic update
-    const update = () => {
+    // Game logic update with delta time
+    const update = (deltaTime: number) => {
       if (gameState !== GameState.Playing) {
         draw();
         return;
       }
 
-      // Birds physics
+      // Birds physics with delta time
       birds.current.forEach(bird => {
         if (!bird.isAlive) return;
-        bird.velocity += GRAVITY;
-        bird.y += bird.velocity;
+        
+        // Apply gravity with delta time
+        bird.velocity += GRAVITY * (deltaTime / 16.67); // 60 FPS baseline
+        bird.y += bird.velocity * (deltaTime / 16.67);
+        
+        // Clamp bird position to prevent glitches
+        bird.y = Math.max(BIRD_SIZE / 2, Math.min(HEIGHT - GROUND_HEIGHT - BIRD_SIZE / 2, bird.y));
       });
 
       // Pipes logic
       pipes.current.forEach((pipe) => {
-        pipe.x -= PIPE_SPEED;
+        pipe.x -= PIPE_SPEED * (deltaTime / 16.67);
       });
+      
       // Remove pipes out of screen
       pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > -50);
 
@@ -427,16 +433,19 @@ export default function FlappyGame({
       }
 
       draw();
-      frame.current++;
     };
 
-    // Animation loop
-    const loop = () => {
-      update();
+    // Animation loop with delta time
+    const loop = (currentTime: number) => {
+      const deltaTime = currentTime - lastTime.current;
+      lastTime.current = currentTime;
+      
+      update(deltaTime);
       animationId.current = requestAnimationFrame(loop);
     };
 
     if (gameState !== GameState.Ready) {
+      lastTime.current = performance.now();
       animationId.current = requestAnimationFrame(loop);
     } else {
       draw();
