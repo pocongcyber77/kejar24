@@ -8,10 +8,11 @@ const GROUND_HEIGHT = 100;
 const BIRD_SIZE = 32;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 140;
-const GRAVITY = 0.4; // Reduced gravity for smoother movement
-const FLAP_POWER = -7; // Reduced flap power
+const GRAVITY = 0.35; // Further reduced gravity for smoother movement
+const FLAP_POWER = -6; // Reduced flap power for more controlled movement
+const MAX_VELOCITY = 8; // Add max velocity to prevent extreme speeds
 const PIPE_INTERVAL = 1500; // ms
-const PIPE_SPEED = 2; // Reduced pipe speed
+const PIPE_SPEED = 1.8; // Further reduced pipe speed
 
 type Pipe = {
   x: number;
@@ -167,20 +168,22 @@ export default function FlappyGame({
     }
   }, [gameState]);
 
-  // Simple collision detection
+  // Simple collision detection with tolerance
   const checkCollision = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
     const birdRadius = BIRD_SIZE / 2;
-    const birdLeft = birdX - birdRadius;
-    const birdRight = birdX + birdRadius;
-    const birdTop = bird.y - birdRadius;
-    const birdBottom = bird.y + birdRadius;
+    const tolerance = 2; // Add tolerance to prevent false collisions
+    
+    const birdLeft = birdX - birdRadius + tolerance;
+    const birdRight = birdX + birdRadius - tolerance;
+    const birdTop = bird.y - birdRadius + tolerance;
+    const birdBottom = bird.y + birdRadius - tolerance;
     
     const pipeLeft = pipe.x;
     const pipeRight = pipe.x + PIPE_WIDTH;
     const pipeGapTop = pipe.gapY;
     const pipeGapBottom = pipe.gapY + PIPE_GAP;
     
-    // Check horizontal collision
+    // Check horizontal collision with tolerance
     if (birdRight > pipeLeft && birdLeft < pipeRight) {
       // Check vertical collision with top pipe
       if (birdTop < pipeGapTop) {
@@ -195,15 +198,15 @@ export default function FlappyGame({
     return false;
   }, []);
 
-  // Simple score detection
+  // Simple score detection with better logic
   const checkScore = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
     if (pipe.scored) return false;
     
     const birdCenterX = birdX;
     const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
     
-    // Bird has passed the pipe if it's past the pipe center
-    return birdCenterX > pipeCenterX;
+    // Bird has passed the pipe if it's past the pipe center with some margin
+    return birdCenterX > pipeCenterX + 10;
   }, []);
 
   // Keyboard controls
@@ -358,6 +361,10 @@ export default function FlappyGame({
         
         // Apply gravity with delta time
         bird.velocity += GRAVITY * (deltaTime / 16.67); // 60 FPS baseline
+        
+        // Clamp velocity to prevent extreme speeds
+        bird.velocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, bird.velocity));
+        
         bird.y += bird.velocity * (deltaTime / 16.67);
         
         // Clamp bird position to prevent glitches
@@ -402,12 +409,22 @@ export default function FlappyGame({
           bird.velocity = 0;
         }
         
-        // Pipe collision and scoring
+        // Pipe collision and scoring with frame-based checking
+        let collisionDetected = false;
         for (const pipe of pipes.current) {
-          // Check collision
-          if (checkCollision(bird, birdX, pipe)) {
-            bird.isAlive = false;
-            return;
+          // Only check collision if bird is near the pipe (performance optimization)
+          const birdCenterX = birdX;
+          const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
+          const distanceToPipe = Math.abs(birdCenterX - pipeCenterX);
+          
+          // Only check collision if bird is within reasonable distance to pipe
+          if (distanceToPipe < PIPE_WIDTH + BIRD_SIZE) {
+            // Check collision
+            if (checkCollision(bird, birdX, pipe)) {
+              bird.isAlive = false;
+              collisionDetected = true;
+              break;
+            }
           }
           
           // Check scoring
@@ -417,7 +434,7 @@ export default function FlappyGame({
           }
         }
         
-        if (bird.isAlive) allBirdsDead = false;
+        if (!collisionDetected && bird.isAlive) allBirdsDead = false;
       });
 
       // Update score
