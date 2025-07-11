@@ -48,13 +48,19 @@ function GameContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    console.log("Joining room:", roomId, "User:", userId);
+
     // Check if already joined
-    const { data: existingPlayer } = await supabase
+    const { data: existingPlayer, error: checkError } = await supabase
       .from("players")
       .select("*")
       .eq("room_id", roomId)
       .eq("user_id", userId)
       .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error("Error checking existing player:", checkError);
+    }
 
     if (!existingPlayer) {
       // Join as new player
@@ -70,29 +76,37 @@ function GameContent() {
       if (error) {
         console.error("Error joining room:", error);
       } else {
+        console.log("Successfully joined room");
         // Fetch updated players list after joining
-        const { data: updatedPlayers } = await supabase
-          .from("players")
-          .select("*")
-          .eq("room_id", roomId)
-          .order("joined_at", { ascending: true });
-        if (updatedPlayers) {
-          setPlayers(updatedPlayers);
-          const currentPlayerData = updatedPlayers.find(p => p.user_id === userId);
-          if (currentPlayerData) setCurrentPlayer(currentPlayerData);
-        }
+        await fetchPlayers(roomId);
       }
     } else {
+      console.log("Already in room:", existingPlayer);
       setCurrentPlayer(existingPlayer);
       // Also fetch all players to ensure we have the complete list
-      const { data: allPlayers } = await supabase
-        .from("players")
-        .select("*")
-        .eq("room_id", roomId)
-        .order("joined_at", { ascending: true });
-      if (allPlayers) {
-        setPlayers(allPlayers);
-      }
+      await fetchPlayers(roomId);
+    }
+  };
+
+  // Fetch players function
+  const fetchPlayers = async (roomId: string) => {
+    console.log("Fetching players for room:", roomId);
+    const { data, error } = await supabase
+      .from("players")
+      .select("*")
+      .eq("room_id", roomId)
+      .order("joined_at", { ascending: true });
+    
+    if (error) {
+      console.error("Error fetching players:", error);
+      return;
+    }
+    
+    console.log("Fetched players:", data);
+    if (data) {
+      setPlayers(data);
+      const currentPlayerData = data.find(p => p.user_id === userId);
+      if (currentPlayerData) setCurrentPlayer(currentPlayerData);
     }
   };
 
@@ -127,6 +141,8 @@ function GameContent() {
   useEffect(() => {
     if (!room) return;
 
+    console.log("Setting up subscriptions for room:", room);
+
     // Subscribe to room changes
     const roomChannel = supabase
       .channel(`room-${room}`)
@@ -134,6 +150,7 @@ function GameContent() {
         "postgres_changes",
         { event: "*", schema: "public", table: "rooms", filter: `id=eq.${room}` },
         (payload) => {
+          console.log("Room change detected:", payload);
           if (payload.eventType === "UPDATE") {
             setRoomData(payload.new as Room);
             if (payload.new.status === "playing") {
@@ -153,50 +170,16 @@ function GameContent() {
         async (payload) => {
           console.log("Player change detected:", payload);
           // Fetch updated players
-          const { data, error } = await supabase
-            .from("players")
-            .select("*")
-            .eq("room_id", room)
-            .order("joined_at", { ascending: true });
-          
-          if (error) {
-            console.error("Error fetching players:", error);
-            return;
-          }
-          
-          if (data) {
-            console.log("Updated players list:", data);
-            setPlayers(data);
-            const currentPlayerData = data.find(p => p.user_id === userId);
-            if (currentPlayerData) setCurrentPlayer(currentPlayerData);
-          }
+          await fetchPlayers(room);
         }
       )
       .subscribe();
 
     // Initial fetch
-    const fetchPlayers = async () => {
-      const { data, error } = await supabase
-        .from("players")
-        .select("*")
-        .eq("room_id", room)
-        .order("joined_at", { ascending: true });
-      
-      if (error) {
-        console.error("Error fetching initial players:", error);
-        return;
-      }
-      
-      if (data) {
-        console.log("Initial players list:", data);
-        setPlayers(data);
-        const currentPlayerData = data.find(p => p.user_id === userId);
-        if (currentPlayerData) setCurrentPlayer(currentPlayerData);
-      }
-    };
-    fetchPlayers();
+    fetchPlayers(room);
 
     return () => {
+      console.log("Cleaning up subscriptions");
       supabase.removeChannel(roomChannel);
       supabase.removeChannel(playersChannel);
     };

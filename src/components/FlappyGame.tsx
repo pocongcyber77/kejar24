@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
@@ -8,16 +8,14 @@ const GROUND_HEIGHT = 100;
 const BIRD_SIZE = 32;
 const PIPE_WIDTH = 60;
 const PIPE_GAP = 140;
-const GRAVITY = 0.35; // Further reduced gravity for smoother movement
-const FLAP_POWER = -6; // Reduced flap power for more controlled movement
-const MAX_VELOCITY = 8; // Add max velocity to prevent extreme speeds
+const GRAVITY = 0.5;
+const FLAP_POWER = -8;
 const PIPE_INTERVAL = 1500; // ms
-const PIPE_SPEED = 1.8; // Further reduced pipe speed
+const PIPE_SPEED = 2.5;
 
 type Pipe = {
   x: number;
   gapY: number;
-  scored?: boolean;
 };
 
 type Player = {
@@ -27,13 +25,6 @@ type Player = {
   username: string;
   is_owner: boolean;
   joined_at: string;
-};
-
-type Bird = {
-  y: number;
-  velocity: number;
-  color: string;
-  isAlive: boolean;
 };
 
 enum GameState {
@@ -46,7 +37,6 @@ const COLORS = {
   bg: "#70c5ce",
   ground: "#ded895",
   bird: "#ffdf00",
-  bird2: "#ff6b6b",
   pipe: "#228b22",
   pipeDark: "#196619",
   text: "#222",
@@ -74,11 +64,11 @@ export default function FlappyGame({
   const [scoreHistory, setScoreHistory] = useState<number[]>([]);
 
   // Game state refs (for animation loop)
-  const birds = useRef<Bird[]>([]);
+  const birdY = useRef(HEIGHT / 2);
+  const velocity = useRef(0);
   const pipes = useRef<Pipe[]>([]);
-  const lastPipeTime = useRef(Date.now());
-  const animationId = useRef<number | null>(null);
-  const lastTime = useRef(0);
+  const frame = useRef(0);
+  const nextPipeId = useRef(0);
 
   // For collision/game over
   const [showScore, setShowScore] = useState(0);
@@ -88,22 +78,6 @@ export default function FlappyGame({
   useEffect(() => {
     setIsMobile(window.innerWidth < 700 || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent));
   }, []);
-
-  // Initialize birds based on multiplayer or solo
-  useEffect(() => {
-    if (isMultiplayer && players.length >= 2) {
-      // Two birds for multiplayer
-      birds.current = [
-        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird, isAlive: true },
-        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird2, isAlive: true }
-      ];
-    } else {
-      // Single bird for solo
-      birds.current = [
-        { y: HEIGHT / 2, velocity: 0, color: COLORS.bird, isAlive: true }
-      ];
-    }
-  }, [isMultiplayer, players]);
 
   // Fetch high score & history
   useEffect(() => {
@@ -147,86 +121,38 @@ export default function FlappyGame({
   }, [gameState, showScore, userId]);
 
   // Start or restart game
-  const startGame = useCallback(() => {
+  const startGame = () => {
     setGameState(GameState.Playing);
     setScore(0);
     setShowScore(0);
-    birds.current.forEach(bird => {
-      bird.y = HEIGHT / 2;
-      bird.velocity = 0;
-      bird.isAlive = true;
-    });
+    birdY.current = HEIGHT / 2;
+    velocity.current = 0;
     pipes.current = [];
-    lastPipeTime.current = Date.now();
-    lastTime.current = 0;
-  }, []);
+    frame.current = 0;
+    nextPipeId.current = 0;
+  };
 
   // Flap handler
-  const flap = useCallback((birdIndex: number = 0) => {
-    if (gameState === GameState.Playing && birds.current[birdIndex]?.isAlive) {
-      birds.current[birdIndex].velocity = FLAP_POWER;
+  const flap = () => {
+    if (gameState === GameState.Playing) {
+      velocity.current = FLAP_POWER;
     }
-  }, [gameState]);
-
-  // Simple collision detection with tolerance
-  const checkCollision = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
-    const birdRadius = BIRD_SIZE / 2;
-    const tolerance = 2; // Add tolerance to prevent false collisions
-    
-    const birdLeft = birdX - birdRadius + tolerance;
-    const birdRight = birdX + birdRadius - tolerance;
-    const birdTop = bird.y - birdRadius + tolerance;
-    const birdBottom = bird.y + birdRadius - tolerance;
-    
-    const pipeLeft = pipe.x;
-    const pipeRight = pipe.x + PIPE_WIDTH;
-    const pipeGapTop = pipe.gapY;
-    const pipeGapBottom = pipe.gapY + PIPE_GAP;
-    
-    // Check horizontal collision with tolerance
-    if (birdRight > pipeLeft && birdLeft < pipeRight) {
-      // Check vertical collision with top pipe
-      if (birdTop < pipeGapTop) {
-        return true;
-      }
-      // Check vertical collision with bottom pipe
-      if (birdBottom > pipeGapBottom) {
-        return true;
-      }
-    }
-    
-    return false;
-  }, []);
-
-  // Simple score detection with better logic
-  const checkScore = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
-    if (pipe.scored) return false;
-    
-    const birdCenterX = birdX;
-    const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
-    
-    // Bird has passed the pipe if it's past the pipe center with some margin
-    return birdCenterX > pipeCenterX + 10;
-  }, []);
+  };
 
   // Keyboard controls
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (gameState === GameState.Ready && (e.code === "Space" || e.code === "ArrowUp")) {
         startGame();
-      } else if (gameState === GameState.Playing) {
-        if (e.code === "Space" || e.code === "ArrowUp") {
-          flap(0); // First bird
-        } else if (e.code === "KeyW" || e.code === "ArrowLeft") {
-          flap(1); // Second bird (if multiplayer)
-        }
+      } else if (gameState === GameState.Playing && (e.code === "Space" || e.code === "ArrowUp")) {
+        flap();
       } else if (gameState === GameState.GameOver && (e.code === "Space" || e.code === "ArrowUp")) {
         startGame();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gameState, startGame, flap]);
+  }, [gameState]);
 
   // Touch controls
   useEffect(() => {
@@ -236,19 +162,9 @@ export default function FlappyGame({
       const canvas = canvasRef.current;
       if (!canvas) return;
       if (document.activeElement !== canvas) canvas.focus();
-      
+      const event = { code: "Space" } as KeyboardEvent;
       if (gameState === "ready") startGame();
-      else if (gameState === "playing") {
-        // Touch left side for first bird, right side for second bird
-        const touch = e.touches[0];
-        const rect = canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        if (x < canvas.width / 2) {
-          flap(0);
-        } else {
-          flap(1);
-        }
-      }
+      else if (gameState === "playing") flap();
       else if (gameState === "gameover") startGame();
     };
     const canvas = canvasRef.current;
@@ -259,10 +175,13 @@ export default function FlappyGame({
       if (canvas) canvas.removeEventListener("touchstart", handleTouch);
     };
     // eslint-disable-next-line
-  }, [gameState, startGame, flap]);
+  }, [gameState]);
 
   // Main game loop
   useEffect(() => {
+    let animationId: number;
+    let lastPipeTime = Date.now();
+
     const draw = () => {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
@@ -292,28 +211,15 @@ export default function FlappyGame({
       });
       ctx.restore();
 
-      // Draw birds
+      // Draw bird
       ctx.save();
-      birds.current.forEach((bird, index) => {
-        if (!bird.isAlive) return;
-        
-        ctx.beginPath();
-        const x = WIDTH / 4 + (index * 50); // Offset second bird
-        ctx.arc(x, bird.y, BIRD_SIZE / 2, 0, Math.PI * 2);
-        ctx.fillStyle = bird.color;
-        ctx.fill();
-        ctx.strokeStyle = "#e6b800";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        // Draw player name above bird
-        if (isMultiplayer && players[index]) {
-          ctx.fillStyle = COLORS.text;
-          ctx.font = "12px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(players[index].username, x, bird.y - BIRD_SIZE / 2 - 10);
-        }
-      });
+      ctx.beginPath();
+      ctx.arc(WIDTH / 4, birdY.current, BIRD_SIZE / 2, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.bird;
+      ctx.fill();
+      ctx.strokeStyle = "#e6b800";
+      ctx.lineWidth = 2;
+      ctx.stroke();
       ctx.restore();
 
       // Draw score
@@ -321,14 +227,6 @@ export default function FlappyGame({
       ctx.font = "bold 36px sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(`${score}`, WIDTH / 2, 80);
-
-      // Draw controls info for multiplayer
-      if (isMultiplayer && gameState === GameState.Ready) {
-        ctx.fillStyle = COLORS.text;
-        ctx.font = "16px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("Player 1: Space/↑ | Player 2: W/←", WIDTH / 2, HEIGHT - 60);
-      }
 
       // Draw start/game over UI
       if (gameState === GameState.Ready) {
@@ -348,133 +246,100 @@ export default function FlappyGame({
       }
     };
 
-    // Game logic update with delta time
-    const update = (deltaTime: number) => {
+    // Game logic update
+    const update = () => {
       if (gameState !== GameState.Playing) {
         draw();
         return;
       }
 
-      // Birds physics with delta time
-      birds.current.forEach(bird => {
-        if (!bird.isAlive) return;
-        
-        // Apply gravity with delta time
-        bird.velocity += GRAVITY * (deltaTime / 16.67); // 60 FPS baseline
-        
-        // Clamp velocity to prevent extreme speeds
-        bird.velocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, bird.velocity));
-        
-        bird.y += bird.velocity * (deltaTime / 16.67);
-        
-        // Clamp bird position to prevent glitches
-        bird.y = Math.max(BIRD_SIZE / 2, Math.min(HEIGHT - GROUND_HEIGHT - BIRD_SIZE / 2, bird.y));
-      });
+      // Bird physics
+      velocity.current += GRAVITY;
+      birdY.current += velocity.current;
 
       // Pipes logic
       pipes.current.forEach((pipe) => {
-        pipe.x -= PIPE_SPEED * (deltaTime / 16.67);
+        pipe.x -= PIPE_SPEED;
       });
-      
       // Remove pipes out of screen
-      pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > -50);
+      pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > 0);
 
       // Add new pipe
-      if (Date.now() - lastPipeTime.current > PIPE_INTERVAL) {
+      if (Date.now() - lastPipeTime > PIPE_INTERVAL) {
         const minGapY = 80;
         const maxGapY = HEIGHT - GROUND_HEIGHT - PIPE_GAP - 80;
         const gapY = Math.floor(Math.random() * (maxGapY - minGapY + 1)) + minGapY;
         pipes.current.push({ x: WIDTH, gapY });
-        lastPipeTime.current = Date.now();
+        lastPipeTime = Date.now();
       }
 
-      // Collision detection and scoring
-      let allBirdsDead = true;
-      let scoreIncrement = 0;
-      
-      birds.current.forEach((bird, index) => {
-        if (!bird.isAlive) return;
-        
-        const birdX = WIDTH / 4 + (index * 50);
-        
-        // Ground collision
-        if (bird.y + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
-          bird.isAlive = false;
-          return;
-        }
-        
-        // Ceiling collision
-        if (bird.y - BIRD_SIZE / 2 <= 0) {
-          bird.y = BIRD_SIZE / 2;
-          bird.velocity = 0;
-        }
-        
-        // Pipe collision and scoring with frame-based checking
-        let collisionDetected = false;
-        for (const pipe of pipes.current) {
-          // Only check collision if bird is near the pipe (performance optimization)
-          const birdCenterX = birdX;
-          const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
-          const distanceToPipe = Math.abs(birdCenterX - pipeCenterX);
-          
-          // Only check collision if bird is within reasonable distance to pipe
-          if (distanceToPipe < PIPE_WIDTH + BIRD_SIZE) {
-            // Check collision
-            if (checkCollision(bird, birdX, pipe)) {
-              bird.isAlive = false;
-              collisionDetected = true;
-              break;
-            }
-          }
-          
-          // Check scoring
-          if (checkScore(bird, birdX, pipe)) {
-            pipe.scored = true;
-            scoreIncrement++;
-          }
-        }
-        
-        if (!collisionDetected && bird.isAlive) allBirdsDead = false;
-      });
-
-      // Update score
-      if (scoreIncrement > 0) {
-        setScore(prev => prev + scoreIncrement);
-      }
-
-      // Game over if all birds are dead
-      if (allBirdsDead) {
+      // Collision detection
+      // Ground
+      if (birdY.current + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
         setGameState(GameState.GameOver);
         setShowScore(score);
         return;
       }
+      // Ceiling
+      if (birdY.current - BIRD_SIZE / 2 <= 0) {
+        birdY.current = BIRD_SIZE / 2;
+        velocity.current = 0;
+      }
+      // Pipes
+      for (const pipe of pipes.current) {
+        const birdX = WIDTH / 4;
+        // Check horizontal collision
+        if (
+          birdX + BIRD_SIZE / 2 > pipe.x &&
+          birdX - BIRD_SIZE / 2 < pipe.x + PIPE_WIDTH
+        ) {
+          // Check vertical collision
+          if (
+            birdY.current - BIRD_SIZE / 2 < pipe.gapY ||
+            birdY.current + BIRD_SIZE / 2 > pipe.gapY + PIPE_GAP
+          ) {
+            setGameState(GameState.GameOver);
+            setShowScore(score);
+            return;
+          }
+        }
+      }
+
+      // Score: add when bird passes a pipe
+      pipes.current.forEach((pipe) => {
+        const birdX = WIDTH / 4;
+        if (
+          !("scored" in pipe) &&
+          pipe.x + PIPE_WIDTH / 2 < birdX - PIPE_SPEED &&
+          pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
+        ) {
+          setScore((s) => s + 1);
+          // Mark as scored
+          (pipe as any).scored = true;
+        }
+      });
 
       draw();
+      frame.current++;
     };
 
-    // Animation loop with delta time
-    const loop = (currentTime: number) => {
-      const deltaTime = currentTime - lastTime.current;
-      lastTime.current = currentTime;
-      
-      update(deltaTime);
-      animationId.current = requestAnimationFrame(loop);
+    // Animation loop
+    const loop = () => {
+      update();
+      animationId = requestAnimationFrame(loop);
     };
 
     if (gameState !== GameState.Ready) {
-      lastTime.current = performance.now();
-      animationId.current = requestAnimationFrame(loop);
+      animationId = requestAnimationFrame(loop);
     } else {
       draw();
     }
 
     return () => {
-      if (animationId.current) {
-        cancelAnimationFrame(animationId.current);
-      }
+      cancelAnimationFrame(animationId);
     };
     // eslint-disable-next-line
-  }, [gameState, score, isMultiplayer, players, checkCollision, checkScore]);
+  }, [gameState, score]);
 
   // Draw once on mount
   useEffect(() => {
