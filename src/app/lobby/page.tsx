@@ -15,7 +15,15 @@ export default function Lobby() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"" | "solo" | "multiplayer">("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const router = useRouter();
+
+  // Get current user session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+  }, []);
 
   // Fetch rooms from Supabase
   const fetchRooms = async () => {
@@ -90,10 +98,7 @@ export default function Lobby() {
         alert("User not logged in!");
         return;
       }
-      if (session.user.id === ownerId) {
-        alert("Anda adalah owner room ini.");
-        return;
-      }
+      // Owner bisa bergabung ke roomnya sendiri
       router.push(`/game?room=${roomId}`);
     });
   };
@@ -122,22 +127,52 @@ export default function Lobby() {
           </button>
           <h2>Available Rooms</h2>
           <ul>
-            {rooms.map((room) => (
-              <li key={room.id} style={{ marginBottom: 8, padding: 8, border: "1px solid #eee", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <b>{room.name}</b> (Owner: {room.owner})
-                  <span style={{ marginLeft: 12, color: "#888" }}>
-                    {new Date(room.created_at).toLocaleString()}
-                  </span>
-                </div>
-                <button
-                  style={{ marginLeft: 16, padding: "8px 16px", borderRadius: 6, background: "#10b981", color: "#fff", border: "none", fontWeight: "bold", cursor: "pointer" }}
-                  onClick={() => handleJoinRoom(room.id, room.owner)}
-                >
-                  Join
-                </button>
-              </li>
-            ))}
+            {rooms.map((room) => {
+              const isOwner = currentUserId === room.owner;
+              return (
+                <li key={room.id} style={{ 
+                  marginBottom: 8, 
+                  padding: 8, 
+                  border: isOwner ? "2px solid #f59e0b" : "1px solid #eee", 
+                  borderRadius: 6, 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between",
+                  background: isOwner ? "#fef3c7" : "#fff"
+                }}>
+                  <div>
+                    <b>{room.name}</b> 
+                    {isOwner ? (
+                      <span style={{ marginLeft: 8, color: "#f59e0b", fontWeight: "bold" }}>
+                        (Room Anda)
+                      </span>
+                    ) : (
+                      <span style={{ marginLeft: 8, color: "#666" }}>
+                        (Owner: {room.owner})
+                      </span>
+                    )}
+                    <span style={{ marginLeft: 12, color: "#888" }}>
+                      {new Date(room.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <button
+                    style={{ 
+                      marginLeft: 16, 
+                      padding: "8px 16px", 
+                      borderRadius: 6, 
+                      background: isOwner ? "#f59e0b" : "#10b981", 
+                      color: "#fff", 
+                      border: "none", 
+                      fontWeight: "bold", 
+                      cursor: "pointer" 
+                    }}
+                    onClick={() => handleJoinRoom(room.id, room.owner)}
+                  >
+                    {isOwner ? "Masuk" : "Join"}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           {rooms.length === 0 && <div>No rooms available.</div>}
         </>
