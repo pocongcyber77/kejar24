@@ -67,9 +67,32 @@ function GameContent() {
           joined_at: new Date().toISOString(),
         },
       ]);
-      if (error) console.error("Error joining room:", error);
+      if (error) {
+        console.error("Error joining room:", error);
+      } else {
+        // Fetch updated players list after joining
+        const { data: updatedPlayers } = await supabase
+          .from("players")
+          .select("*")
+          .eq("room_id", roomId)
+          .order("joined_at", { ascending: true });
+        if (updatedPlayers) {
+          setPlayers(updatedPlayers);
+          const currentPlayerData = updatedPlayers.find(p => p.user_id === userId);
+          if (currentPlayerData) setCurrentPlayer(currentPlayerData);
+        }
+      }
     } else {
       setCurrentPlayer(existingPlayer);
+      // Also fetch all players to ensure we have the complete list
+      const { data: allPlayers } = await supabase
+        .from("players")
+        .select("*")
+        .eq("room_id", roomId)
+        .order("joined_at", { ascending: true });
+      if (allPlayers) {
+        setPlayers(allPlayers);
+      }
     }
   };
 
@@ -127,14 +150,22 @@ function GameContent() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "players", filter: `room_id=eq.${room}` },
-        async () => {
+        async (payload) => {
+          console.log("Player change detected:", payload);
           // Fetch updated players
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from("players")
             .select("*")
             .eq("room_id", room)
             .order("joined_at", { ascending: true });
+          
+          if (error) {
+            console.error("Error fetching players:", error);
+            return;
+          }
+          
           if (data) {
+            console.log("Updated players list:", data);
             setPlayers(data);
             const currentPlayerData = data.find(p => p.user_id === userId);
             if (currentPlayerData) setCurrentPlayer(currentPlayerData);
@@ -145,12 +176,19 @@ function GameContent() {
 
     // Initial fetch
     const fetchPlayers = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("players")
         .select("*")
         .eq("room_id", room)
         .order("joined_at", { ascending: true });
+      
+      if (error) {
+        console.error("Error fetching initial players:", error);
+        return;
+      }
+      
       if (data) {
+        console.log("Initial players list:", data);
         setPlayers(data);
         const currentPlayerData = data.find(p => p.user_id === userId);
         if (currentPlayerData) setCurrentPlayer(currentPlayerData);
