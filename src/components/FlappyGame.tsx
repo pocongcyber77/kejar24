@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
@@ -16,6 +16,7 @@ const PIPE_SPEED = 2.5;
 type Pipe = {
   x: number;
   gapY: number;
+  scored?: boolean;
 };
 
 type Player = {
@@ -75,7 +76,8 @@ export default function FlappyGame({
   const birds = useRef<Bird[]>([]);
   const pipes = useRef<Pipe[]>([]);
   const frame = useRef(0);
-  const nextPipeId = useRef(0);
+  const lastPipeTime = useRef(Date.now());
+  const animationId = useRef<number | null>(null);
 
   // For collision/game over
   const [showScore, setShowScore] = useState(0);
@@ -144,7 +146,7 @@ export default function FlappyGame({
   }, [gameState, showScore, userId]);
 
   // Start or restart game
-  const startGame = () => {
+  const startGame = useCallback(() => {
     setGameState(GameState.Playing);
     setScore(0);
     setShowScore(0);
@@ -155,15 +157,54 @@ export default function FlappyGame({
     });
     pipes.current = [];
     frame.current = 0;
-    nextPipeId.current = 0;
-  };
+    lastPipeTime.current = Date.now();
+  }, []);
 
   // Flap handler
-  const flap = (birdIndex: number = 0) => {
+  const flap = useCallback((birdIndex: number = 0) => {
     if (gameState === GameState.Playing && birds.current[birdIndex]?.isAlive) {
       birds.current[birdIndex].velocity = FLAP_POWER;
     }
-  };
+  }, [gameState]);
+
+  // Improved collision detection
+  const checkCollision = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
+    const birdLeft = birdX - BIRD_SIZE / 2;
+    const birdRight = birdX + BIRD_SIZE / 2;
+    const birdTop = bird.y - BIRD_SIZE / 2;
+    const birdBottom = bird.y + BIRD_SIZE / 2;
+    
+    const pipeLeft = pipe.x;
+    const pipeRight = pipe.x + PIPE_WIDTH;
+    const pipeGapTop = pipe.gapY;
+    const pipeGapBottom = pipe.gapY + PIPE_GAP;
+    
+    // Check horizontal collision
+    if (birdRight > pipeLeft && birdLeft < pipeRight) {
+      // Check vertical collision with top pipe
+      if (birdTop < pipeGapTop) {
+        return true;
+      }
+      // Check vertical collision with bottom pipe
+      if (birdBottom > pipeGapBottom) {
+        return true;
+      }
+    }
+    
+    return false;
+  }, []);
+
+  // Improved score detection
+  const checkScore = useCallback((bird: Bird, birdX: number, pipe: Pipe): boolean => {
+    if (pipe.scored) return false;
+    
+    // Check if bird has passed the pipe
+    const birdCenterX = birdX;
+    const pipeCenterX = pipe.x + PIPE_WIDTH / 2;
+    
+    // Bird has passed the pipe if it's slightly past the pipe center
+    return birdCenterX > pipeCenterX + 5;
+  }, []);
 
   // Keyboard controls
   useEffect(() => {
@@ -182,7 +223,7 @@ export default function FlappyGame({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gameState]);
+  }, [gameState, startGame, flap]);
 
   // Touch controls
   useEffect(() => {
@@ -215,13 +256,10 @@ export default function FlappyGame({
       if (canvas) canvas.removeEventListener("touchstart", handleTouch);
     };
     // eslint-disable-next-line
-  }, [gameState]);
+  }, [gameState, startGame, flap]);
 
   // Main game loop
   useEffect(() => {
-    let animationId: number;
-    let lastPipeTime = Date.now();
-
     const draw = () => {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
@@ -326,53 +364,60 @@ export default function FlappyGame({
         pipe.x -= PIPE_SPEED;
       });
       // Remove pipes out of screen
-      pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > 0);
+      pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > -50);
 
       // Add new pipe
-      if (Date.now() - lastPipeTime > PIPE_INTERVAL) {
+      if (Date.now() - lastPipeTime.current > PIPE_INTERVAL) {
         const minGapY = 80;
         const maxGapY = HEIGHT - GROUND_HEIGHT - PIPE_GAP - 80;
         const gapY = Math.floor(Math.random() * (maxGapY - minGapY + 1)) + minGapY;
         pipes.current.push({ x: WIDTH, gapY });
-        lastPipeTime = Date.now();
+        lastPipeTime.current = Date.now();
       }
 
-      // Collision detection
+      // Collision detection and scoring
       let allBirdsDead = true;
+      let scoreIncrement = 0;
+      
       birds.current.forEach((bird, index) => {
         if (!bird.isAlive) return;
         
-        // Ground
+        const birdX = WIDTH / 4 + (index * 50);
+        
+        // Ground collision
         if (bird.y + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
           bird.isAlive = false;
           return;
         }
-        // Ceiling
+        
+        // Ceiling collision
         if (bird.y - BIRD_SIZE / 2 <= 0) {
           bird.y = BIRD_SIZE / 2;
           bird.velocity = 0;
         }
-        // Pipes
+        
+        // Pipe collision and scoring
         for (const pipe of pipes.current) {
-          const birdX = WIDTH / 4 + (index * 50);
-          // Check horizontal collision
-          if (
-            birdX + BIRD_SIZE / 2 > pipe.x &&
-            birdX - BIRD_SIZE / 2 < pipe.x + PIPE_WIDTH
-          ) {
-            // Check vertical collision
-            if (
-              bird.y - BIRD_SIZE / 2 < pipe.gapY ||
-              bird.y + BIRD_SIZE / 2 > pipe.gapY + PIPE_GAP
-            ) {
-              bird.isAlive = false;
-              return;
-            }
+          // Check collision
+          if (checkCollision(bird, birdX, pipe)) {
+            bird.isAlive = false;
+            return;
+          }
+          
+          // Check scoring
+          if (checkScore(bird, birdX, pipe)) {
+            pipe.scored = true;
+            scoreIncrement++;
           }
         }
         
         if (bird.isAlive) allBirdsDead = false;
       });
+
+      // Update score
+      if (scoreIncrement > 0) {
+        setScore(prev => prev + scoreIncrement);
+      }
 
       // Game over if all birds are dead
       if (allBirdsDead) {
@@ -381,28 +426,6 @@ export default function FlappyGame({
         return;
       }
 
-      // Score: add when any bird passes a pipe
-      pipes.current.forEach((pipe) => {
-        if ("scored" in pipe) return;
-        
-        let anyBirdPassed = false;
-        birds.current.forEach((bird, index) => {
-          if (!bird.isAlive) return;
-          const birdX = WIDTH / 4 + (index * 50);
-          if (
-            pipe.x + PIPE_WIDTH / 2 < birdX - PIPE_SPEED &&
-            pipe.x + PIPE_WIDTH / 2 >= birdX - PIPE_SPEED - PIPE_SPEED
-          ) {
-            anyBirdPassed = true;
-          }
-        });
-        
-        if (anyBirdPassed) {
-          setScore((s) => s + 1);
-          (pipe as any).scored = true;
-        }
-      });
-
       draw();
       frame.current++;
     };
@@ -410,20 +433,22 @@ export default function FlappyGame({
     // Animation loop
     const loop = () => {
       update();
-      animationId = requestAnimationFrame(loop);
+      animationId.current = requestAnimationFrame(loop);
     };
 
     if (gameState !== GameState.Ready) {
-      animationId = requestAnimationFrame(loop);
+      animationId.current = requestAnimationFrame(loop);
     } else {
       draw();
     }
 
     return () => {
-      cancelAnimationFrame(animationId);
+      if (animationId.current) {
+        cancelAnimationFrame(animationId.current);
+      }
     };
     // eslint-disable-next-line
-  }, [gameState, score, isMultiplayer, players]);
+  }, [gameState, score, isMultiplayer, players, checkCollision, checkScore]);
 
   // Draw once on mount
   useEffect(() => {
