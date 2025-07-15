@@ -7,7 +7,7 @@ const HEIGHT = 600;
 const GROUND_HEIGHT = 50;
 const BIRD_SIZE = 65;
 const PIPE_WIDTH = 60;
-const PIPE_GAP = 150;
+const PIPE_GAP = 160;
 const GRAVITY = 0.6;
 const FLAP_POWER = -9;
 const PIPE_INTERVAL = 1200; // ms
@@ -356,7 +356,7 @@ export default function FlappyGame() {
       birdY.current += velocity.current;
 
       const elapsedSec = (Date.now() - startTime.current) / 1000;
-      pipeSpeed.current = 3.0 + 0.08 * elapsedSec;
+      pipeSpeed.current = 3.0 + 0.1 * elapsedSec;
 
       pipes.current.forEach((pipe) => {
         pipe.x -= pipeSpeed.current;
