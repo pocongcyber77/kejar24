@@ -5,9 +5,9 @@ import React, { useRef, useEffect, useState } from "react";
 const WIDTH = 400;
 const HEIGHT = 600;
 const GROUND_HEIGHT = 50;
-const BIRD_SIZE = 55;
+const BIRD_SIZE = 65;
 const PIPE_WIDTH = 60;
-const PIPE_GAP = 155;
+const PIPE_GAP = 150;
 const GRAVITY = 0.6;
 const FLAP_POWER = -9;
 const PIPE_INTERVAL = 1200; // ms
@@ -356,7 +356,7 @@ export default function FlappyGame() {
       birdY.current += velocity.current;
 
       const elapsedSec = (Date.now() - startTime.current) / 1000;
-      pipeSpeed.current = 3.0 + 0.02 * elapsedSec;
+      pipeSpeed.current = 3.0 + 0.08 * elapsedSec;
 
       pipes.current.forEach((pipe) => {
         pipe.x -= pipeSpeed.current;
