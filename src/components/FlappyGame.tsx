@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useRef, useEffect, useState } from "react";
 
 const WIDTH = 400;
@@ -405,7 +407,7 @@ export default function FlappyGame() {
           setScore((s) => {
             const newScore = s + 1;
             // Unlock matrix if score passes 24
-            if (!matrixUnlocked && newScore > 24) {
+            if (!matrixUnlocked && newScore > 23) {
               setMatrixUnlocked(true);
               setGameState(GameState.GameOver); // Stop the game
             }
@@ -449,7 +451,7 @@ export default function FlappyGame() {
   useEffect(() => {
     if (matrixUnlocked) {
       const timeout = setTimeout(() => {
-        window.location.href = 'https://eterion.vercel.app/members';
+        window.location.href = 'http://localhost:3001/members/024';
       }, 3500); // 3.5s for animation
       return () => clearTimeout(timeout);
     }
@@ -463,8 +465,9 @@ export default function FlappyGame() {
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      const w = canvas.width = WIDTH;
-      const h = canvas.height = HEIGHT;
+      // Make canvas fullscreen
+      const w = canvas.width = window.innerWidth;
+      const h = canvas.height = window.innerHeight;
       const cols = Math.floor(w / 16);
       const ypos = Array(cols).fill(0);
       let running = true;
@@ -488,20 +491,14 @@ export default function FlappyGame() {
     return (
       <canvas
         ref={canvasRef}
-        width={WIDTH}
-        height={HEIGHT}
         style={{
-          width: WIDTH,
-          height: HEIGHT,
-          borderRadius: 24,
-          background: '#000',
-          boxShadow: '0 4px 32px #0008',
-          display: 'block',
-          margin: '0 auto',
-          position: 'absolute',
+          position: 'fixed',
           top: 0,
           left: 0,
-          zIndex: 10,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 1000,
+          pointerEvents: 'none',
         }}
       />
     );
@@ -525,24 +522,24 @@ export default function FlappyGame() {
         <>
           <MatrixRain />
           <div style={{
-            position: 'absolute',
+            position: 'fixed',
             top: 0,
             left: 0,
-            width: WIDTH,
-            height: HEIGHT,
+            width: '100vw',
+            height: '100vh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 20,
+            zIndex: 1100,
             pointerEvents: 'none',
           }}>
             <h1 style={{
               color: '#0f0',
               fontFamily: 'monospace',
-              fontSize: 36,
+              fontSize: 48,
               textShadow: '0 0 16px #0f0, 0 0 32px #0f0',
-              marginBottom: 16,
+              marginBottom: 24,
               letterSpacing: 2,
               fontWeight: 900,
             }}>
@@ -551,10 +548,10 @@ export default function FlappyGame() {
             <p style={{
               color: '#fff',
               fontFamily: 'monospace',
-              fontSize: 20,
+              fontSize: 28,
               background: 'rgba(0,0,0,0.7)',
-              padding: 16,
-              borderRadius: 12,
+              padding: 24,
+              borderRadius: 16,
               boxShadow: '0 0 16px #0f08',
               marginBottom: 8,
             }}>
