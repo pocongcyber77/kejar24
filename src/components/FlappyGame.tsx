@@ -356,7 +356,7 @@ export default function FlappyGame() {
       birdY.current += velocity.current;
 
       const elapsedSec = (Date.now() - startTime.current) / 1000;
-      pipeSpeed.current = 3.0 + 0.1 * elapsedSec;
+      pipeSpeed.current = 3.0 + 0.08 * elapsedSec;
 
       pipes.current.forEach((pipe) => {
         pipe.x -= pipeSpeed.current;
