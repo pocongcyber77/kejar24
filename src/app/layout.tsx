@@ -47,7 +47,6 @@ export default function RootLayout({
           marginBottom: 24,
         }}>
           <a href="/" style={{ color: '#fff', textDecoration: 'none' }}>Home</a>
-          <a href="/lobby" style={{ color: '#fff', textDecoration: 'none' }}>Lobby</a>
           <a href="/game?mode=solo" style={{ color: '#fff', textDecoration: 'none' }}>Game</a>
         </nav>
         {children}

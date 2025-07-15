@@ -14,7 +14,7 @@ export default function Home() {
         <p className="text-lg text-gray-700 mb-6 text-center max-w-xs">
           Wakomting Tekdus berubah jadi <span className="font-bold text-red-500">KUYANG</span> Cina!!😱 Terbang, hindari pipa pabrik garam cina, dan raih nomor togel. Mainkan sendiri atau bareng ayank (sek durung iso)!
         </p>
-        <Link href="/lobby">
+        <Link href="/game?mode=solo">
           <button className="bg-gradient-to-r from-yellow-400 to-red-400 text-white font-bold px-8 py-3 rounded-xl shadow-lg hover:scale-105 hover:from-yellow-500 hover:to-red-500 transition-all text-xl">
             Mulai Main
           </button>

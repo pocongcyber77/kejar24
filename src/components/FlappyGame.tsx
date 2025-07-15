@@ -1,30 +1,19 @@
 import React, { useRef, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
 
 const WIDTH = 400;
 const HEIGHT = 600;
-const GROUND_HEIGHT = 90;
-const BIRD_SIZE = 45;
+const GROUND_HEIGHT = 50;
+const BIRD_SIZE = 55;
 const PIPE_WIDTH = 60;
-const PIPE_GAP = 145;
+const PIPE_GAP = 155;
 const GRAVITY = 0.6;
 const FLAP_POWER = -9;
 const PIPE_INTERVAL = 1200; // ms
-const PIPE_SPEED = 3.0; 
+const PIPE_SPEED = 3.0;
 
 type Pipe = {
   x: number;
   gapY: number;
-};
-
-type Player = {
-  id: string;
-  user_id: string;
-  room_id: string;
-  username: string;
-  is_owner: boolean;
-  joined_at: string;
 };
 
 enum GameState {
@@ -42,25 +31,11 @@ const COLORS = {
   text: "#222",
 };
 
-interface FlappyGameProps {
-  userId: string;
-  roomId?: string | null;
-  players?: Player[];
-  currentPlayer?: Player | null;
-  isMultiplayer?: boolean;
-}
-
-export default function FlappyGame({ 
-  userId, 
-  roomId, 
-  players = [], 
-  currentPlayer, 
-  isMultiplayer = false 
-}: FlappyGameProps) {
+export default function FlappyGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>(GameState.Ready);
   const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState<number | null>(null);
+  const [highScore, setHighScore] = useState<number>(0);
   const [scoreHistory, setScoreHistory] = useState<number[]>([]);
 
   // Game state refs (for animation loop)
@@ -75,56 +50,41 @@ export default function FlappyGame({
   // For collision/game over
   const [showScore, setShowScore] = useState(0);
 
+  // Add new state for matrix unlock
+  const [matrixUnlocked, setMatrixUnlocked] = useState(false);
+
   // Deteksi mobile
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     setIsMobile(window.innerWidth < 700 || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent));
   }, []);
 
-  // Fetch high score & history
+  // Fetch high score & history from localStorage
   useEffect(() => {
-    if (!userId) return;
-    (async () => {
-      const { data } = await supabase
-        .from("scores")
-        .select("score")
-        .eq("user_id", userId)
-        .order("score", { ascending: false });
-      if (data && data.length > 0) {
-        setHighScore(data[0].score);
-        setScoreHistory(data.map((d: any) => d.score));
-      } else {
-        setHighScore(0);
-        setScoreHistory([]);
-      }
-    })();
-  }, [userId]);
+    const localHigh = localStorage.getItem("flappy_highscore");
+    const localHistory = localStorage.getItem("flappy_scorehistory");
+    setHighScore(localHigh ? parseInt(localHigh) : 0);
+    setScoreHistory(localHistory ? JSON.parse(localHistory) : []);
+  }, []);
 
-  // Setelah game over, simpan skor
+  // Setelah game over, simpan skor ke localStorage
   useEffect(() => {
-    if (gameState === GameState.GameOver && userId) {
-      (async () => {
-        await supabase.from("scores").insert([
-          { user_id: userId, score: showScore },
-        ]);
-        // Update high score/history
-        const { data } = await supabase
-          .from("scores")
-          .select("score")
-          .eq("user_id", userId)
-          .order("score", { ascending: false });
-        if (data && data.length > 0) {
-          setHighScore(data[0].score);
-          setScoreHistory(data.map((d: any) => d.score));
+    if (gameState === GameState.GameOver) {
+      setScoreHistory((prev) => {
+        const newHistory = [showScore, ...prev].slice(0, 10);
+        localStorage.setItem("flappy_scorehistory", JSON.stringify(newHistory));
+        if (showScore > highScore) {
+          setHighScore(showScore);
+          localStorage.setItem("flappy_highscore", showScore.toString());
         }
-      })();
+        return newHistory;
+      });
     }
     // eslint-disable-next-line
-  }, [gameState, showScore, userId]);
+  }, [gameState, showScore]);
 
   // Start or restart game
   const startGame = () => {
-    // Stop end.ogg jika sedang main ulang
     if (endRef.current) {
       endRef.current.pause();
       endRef.current.currentTime = 0;
@@ -143,7 +103,7 @@ export default function FlappyGame({
 
   // Audio refs
   const bgmRef = useRef<HTMLAudioElement | null>(null);
-  const flapRef = useRef<HTMLAudioElement | null>(null); // ganti dari passRef
+  const flapRef = useRef<HTMLAudioElement | null>(null);
   const passRef = useRef<HTMLAudioElement | null>(null);
   const endRef = useRef<HTMLAudioElement | null>(null);
 
@@ -216,7 +176,6 @@ export default function FlappyGame({
       const canvas = canvasRef.current;
       if (!canvas) return;
       if (document.activeElement !== canvas) canvas.focus();
-      const event = { code: "Space" } as KeyboardEvent;
       if (gameState === "ready") startGame();
       else if (gameState === "playing") flap();
       else if (gameState === "gameover") startGame();
@@ -270,12 +229,10 @@ export default function FlappyGame({
         let offsetX = 0;
         let offsetY = 0;
         if (imgRatio > canvasRatio) {
-          // Gambar lebih lebar dari canvas, fit lebar
           drawWidth = WIDTH;
           drawHeight = WIDTH / imgRatio;
           offsetY = (HEIGHT - drawHeight) / 2;
         } else {
-          // Gambar lebih tinggi dari canvas, fit tinggi
           drawHeight = HEIGHT;
           drawWidth = HEIGHT * imgRatio;
           offsetX = (WIDTH - drawWidth) / 2;
@@ -308,26 +265,36 @@ export default function FlappyGame({
       ctx.restore();
 
       // Draw bird
+      let angle = 0;
+      if (gameState === GameState.Playing) {
+        angle = Math.max(-30, Math.min(velocity.current * 4, 90));
+      } else if (gameState === GameState.GameOver) {
+        angle = 90;
+      } else {
+        angle = 0;
+      }
+      const angleRad = (angle * Math.PI) / 180;
+      ctx.save();
+      ctx.translate(WIDTH / 4, birdY.current);
+      ctx.rotate(angleRad);
       if (birdImgRef.current && birdImgRef.current.complete) {
         ctx.drawImage(
           birdImgRef.current,
-          WIDTH / 4 - BIRD_SIZE / 2,
-          birdY.current - BIRD_SIZE / 2,
+          -BIRD_SIZE / 2,
+          -BIRD_SIZE / 2,
           BIRD_SIZE,
           BIRD_SIZE
         );
       } else {
-        // fallback jika gambar belum siap
-        ctx.save();
         ctx.beginPath();
-        ctx.arc(WIDTH / 4, birdY.current, BIRD_SIZE / 2, 0, Math.PI * 2);
+        ctx.arc(0, 0, BIRD_SIZE / 2, 0, Math.PI * 2);
         ctx.fillStyle = COLORS.bird;
         ctx.fill();
         ctx.strokeStyle = "#e6b800";
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.restore();
       }
+      ctx.restore();
 
       // Draw score
       ctx.fillStyle = COLORS.text;
@@ -341,28 +308,25 @@ export default function FlappyGame({
         ctx.font = "bold 28px sans-serif";
         ctx.fillText("Flappy Bird", WIDTH / 2, HEIGHT / 2 - 40);
         ctx.font = "20px sans-serif";
-        // Outline hitam untuk petunjuk kontrol
         ctx.save();
         ctx.font = "bold 20px sans-serif";
         ctx.textAlign = "center";
-        ctx.lineWidth = 8; // lebih tebal
+        ctx.lineWidth = 8;
         ctx.strokeStyle = "#000";
         ctx.strokeText("Tekan [Space] atau [↑] untuk mulai", WIDTH / 2, HEIGHT / 2);
         ctx.fillStyle = "#fff";
         ctx.fillText("Tekan [Space] atau [↑] untuk mulai", WIDTH / 2, HEIGHT / 2);
         ctx.restore();
       } else if (gameState === GameState.GameOver) {
-        // Game Over text: kuning extra bold dengan outline hitam
         ctx.save();
-        ctx.font = "900 44px sans-serif"; // extra bold, lebih besar
+        ctx.font = "900 44px sans-serif";
         ctx.textAlign = "center";
         ctx.lineWidth = 8;
         ctx.strokeStyle = "#000";
-        ctx.strokeText("Cina Skibidi!", WIDTH / 2, HEIGHT / 2 - 50);
-        ctx.fillStyle = "#ffe600"; // kuning cerah
-        ctx.fillText("Cina SKibidi!", WIDTH / 2, HEIGHT / 2 - 50);
+        ctx.strokeText("Kamu Tidak Sigma!", WIDTH / 2, HEIGHT / 2 - 50);
+        ctx.fillStyle = "#ffe600";
+        ctx.fillText("Kamu Tidak Sigma!", WIDTH / 2, HEIGHT / 2 - 50);
         ctx.restore();
-        // Skor dan petunjuk kontrol: putih bold + outline hitam
         ctx.save();
         ctx.fillStyle = "#fff";
         ctx.font = "bold 24px sans-serif";
@@ -386,21 +350,17 @@ export default function FlappyGame({
         return;
       }
 
-      // Bird physics
       velocity.current += GRAVITY;
       birdY.current += velocity.current;
 
-      // Pipes logic
       const elapsedSec = (Date.now() - startTime.current) / 1000;
       pipeSpeed.current = 3.0 + 0.02 * elapsedSec;
 
       pipes.current.forEach((pipe) => {
         pipe.x -= pipeSpeed.current;
       });
-      // Remove pipes out of screen
       pipes.current = pipes.current.filter((pipe) => pipe.x + PIPE_WIDTH > 0);
 
-      // Add new pipe
       if (Date.now() - lastPipeTime > PIPE_INTERVAL) {
         const minGapY = 80;
         const maxGapY = HEIGHT - GROUND_HEIGHT - PIPE_GAP - 80;
@@ -409,27 +369,21 @@ export default function FlappyGame({
         lastPipeTime = Date.now();
       }
 
-      // Collision detection
-      // Ground
       if (birdY.current + BIRD_SIZE / 2 >= HEIGHT - GROUND_HEIGHT) {
         setGameState(GameState.GameOver);
         setShowScore(score);
         return;
       }
-      // Ceiling
       if (birdY.current - BIRD_SIZE / 2 <= 0) {
         birdY.current = BIRD_SIZE / 2;
         velocity.current = 0;
       }
-      // Pipes
       for (const pipe of pipes.current) {
         const birdX = WIDTH / 4;
-        // Check horizontal collision
         if (
           birdX + BIRD_SIZE / 2 > pipe.x &&
           birdX - BIRD_SIZE / 2 < pipe.x + PIPE_WIDTH
         ) {
-          // Check vertical collision
           if (
             birdY.current - BIRD_SIZE / 2 < pipe.gapY ||
             birdY.current + BIRD_SIZE / 2 > pipe.gapY + PIPE_GAP
@@ -441,15 +395,22 @@ export default function FlappyGame({
         }
       }
 
-      // Score: add when bird passes a pipe
       pipes.current.forEach((pipe) => {
         const birdX = WIDTH / 4;
         if (
-          !("scored" in pipe) &&
+          !(pipe as any).scored &&
           pipe.x + PIPE_WIDTH / 2 < birdX - pipeSpeed.current &&
           pipe.x + PIPE_WIDTH / 2 >= birdX - pipeSpeed.current - pipeSpeed.current
         ) {
-          setScore((s) => s + 1);
+          setScore((s) => {
+            const newScore = s + 1;
+            // Unlock matrix if score passes 24
+            if (!matrixUnlocked && newScore > 24) {
+              setMatrixUnlocked(true);
+              setGameState(GameState.GameOver); // Stop the game
+            }
+            return newScore;
+          });
           (pipe as any).scored = true;
           playPass();
         }
@@ -459,7 +420,6 @@ export default function FlappyGame({
       frame.current++;
     };
 
-    // Animation loop
     const loop = () => {
       update();
       animationId = requestAnimationFrame(loop);
@@ -477,7 +437,6 @@ export default function FlappyGame({
     // eslint-disable-next-line
   }, [gameState, score]);
 
-  // Draw once on mount
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
     if (ctx) {
@@ -486,39 +445,65 @@ export default function FlappyGame({
     }
   }, []);
 
-  const router = useRouter();
+  // Add effect for matrix unlock redirect
+  useEffect(() => {
+    if (matrixUnlocked) {
+      const timeout = setTimeout(() => {
+        window.location.href = 'https://eterion.vercel.app/members';
+      }, 3500); // 3.5s for animation
+      return () => clearTimeout(timeout);
+    }
+  }, [matrixUnlocked]);
 
-  if (!userId) {
+  // Add matrix rain animation component
+  function MatrixRain() {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const w = canvas.width = WIDTH;
+      const h = canvas.height = HEIGHT;
+      const cols = Math.floor(w / 16);
+      const ypos = Array(cols).fill(0);
+      let running = true;
+      function matrix() {
+        if (!ctx) return;
+        ctx.fillStyle = 'rgba(0,0,0,0.08)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#0f0';
+        ctx.font = '16px monospace';
+        for (let i = 0; i < cols; i++) {
+          const text = String.fromCharCode(0x30A0 + Math.random() * 96);
+          ctx.fillText(text, i * 16, ypos[i] * 16);
+          if (Math.random() > 0.975) ypos[i] = 0;
+          else ypos[i]++;
+        }
+        if (running) requestAnimationFrame(matrix);
+      }
+      matrix();
+      return () => { running = false; };
+    }, []);
     return (
-      <div
+      <canvas
+        ref={canvasRef}
+        width={WIDTH}
+        height={HEIGHT}
         style={{
-          minHeight: "100vh",
-          width: "100vw",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#70c5ce",
+          width: WIDTH,
+          height: HEIGHT,
+          borderRadius: 24,
+          background: '#000',
+          boxShadow: '0 4px 32px #0008',
+          display: 'block',
+          margin: '0 auto',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 10,
         }}
-      >
-        <button
-          style={{
-            marginTop: 24,
-            padding: "16px 32px",
-            fontSize: 20,
-            borderRadius: 8,
-            background: "#2563eb",
-            color: "#fff",
-            fontWeight: "bold",
-            border: "none",
-            cursor: "pointer",
-          }}
-          onClick={() => router.push("/auth")}
-        >
-          Login untuk Main
-        </button>
-      </div>
+      />
     );
   }
 
@@ -533,22 +518,54 @@ export default function FlappyGame({
         alignItems: "center",
         justifyContent: "center",
         background: "#70c5ce",
+        position: 'relative',
       }}
     >
+      {matrixUnlocked && (
+        <>
+          <MatrixRain />
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: WIDTH,
+            height: HEIGHT,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20,
+            pointerEvents: 'none',
+          }}>
+            <h1 style={{
+              color: '#0f0',
+              fontFamily: 'monospace',
+              fontSize: 36,
+              textShadow: '0 0 16px #0f0, 0 0 32px #0f0',
+              marginBottom: 16,
+              letterSpacing: 2,
+              fontWeight: 900,
+            }}>
+              ACCESS GRANTED
+            </h1>
+            <p style={{
+              color: '#fff',
+              fontFamily: 'monospace',
+              fontSize: 20,
+              background: 'rgba(0,0,0,0.7)',
+              padding: 16,
+              borderRadius: 12,
+              boxShadow: '0 0 16px #0f08',
+              marginBottom: 8,
+            }}>
+              Anda telah membobol sistem Eterion.<br />Mengalihkan ke data member rahasia...
+            </p>
+          </div>
+        </>
+      )}
       <div style={{ marginBottom: 16, fontWeight: "bold", color: "#2563eb", fontSize: 22 }}>
         Nomor Togel Barokah: {highScore ?? "-"}
       </div>
-      {isMultiplayer && (
-        <div style={{ 
-          marginBottom: 16, 
-          padding: "8px 16px", 
-          background: "#e3f2fd", 
-          borderRadius: 8,
-          border: "1px solid #2196f3"
-        }}>
-          <strong>Multiplayer Mode</strong> - {players.length} pemain
-        </div>
-      )}
       <canvas
         ref={canvasRef}
         width={WIDTH}
@@ -557,7 +574,7 @@ export default function FlappyGame({
           width: WIDTH,
           height: HEIGHT,
           borderRadius: 24,
-          background: "#fff", // putih flat
+          background: "#fff",
           boxShadow: "0 4px 32px #0002",
           display: "block",
           margin: "0 auto",
@@ -593,22 +610,6 @@ export default function FlappyGame({
           Riwayat Skor: {scoreHistory.slice(0, 5).join(", ")}
         </div>
       )}
-      <button
-        style={{
-          marginTop: 32,
-          padding: "12px 32px",
-          fontSize: 18,
-          borderRadius: 8,
-          background: "#2563eb",
-          color: "#fff",
-          fontWeight: "bold",
-          border: "none",
-          cursor: "pointer",
-        }}
-        onClick={() => router.push("/lobby")}
-      >
-        Kembali ke Lobby
-      </button>
       <audio ref={bgmRef} src="/audio/bgmusic.ogg" preload="auto" />
       <audio ref={flapRef} src="/audio/flap.ogg" preload="auto" />
       <audio ref={passRef} src="/audio/pass.ogg" preload="auto" />
