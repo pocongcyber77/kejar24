@@ -451,7 +451,7 @@ export default function FlappyGame() {
   useEffect(() => {
     if (matrixUnlocked) {
       const timeout = setTimeout(() => {
-        window.location.href = 'http://localhost:3001/members/024';
+        window.location.href = 'https://eterion.vercel.app/members/024';
       }, 3500); // 3.5s for animation
       return () => clearTimeout(timeout);
     }
